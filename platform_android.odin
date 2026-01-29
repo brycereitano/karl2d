@@ -11,21 +11,21 @@ import "platform_bindings/android"
 
 @(private = "package")
 PLATFORM_ANDROID :: Platform_Interface {
-	state_size             = android_state_size,
-	init                   = android_init,
-	shutdown               = android_shutdown,
+	state_size = android_state_size,
+	init = android_init,
+	shutdown = android_shutdown,
 	get_window_render_glue = android_get_window_render_glue,
-	get_events             = android_get_events,
-	get_width              = android_get_width,
-	get_height             = android_get_height,
-	set_position           = android_set_position,
-	set_size               = android_set_size,
-	get_window_scale       = android_get_window_scale,
-	set_window_mode        = android_set_window_mode,
-	is_gamepad_active      = android_is_gamepad_active,
-	get_gamepad_axis       = android_get_gamepad_axis,
-	set_gamepad_vibration  = android_set_gamepad_vibration,
-	set_internal_state     = android_set_internal_state,
+	get_events = android_get_events,
+	get_screen_width = android_get_width,
+	get_screen_height = android_get_height,
+	set_window_position = android_set_position,
+	set_screen_size = android_set_size,
+	get_window_scale = android_get_window_scale,
+	set_window_mode = android_set_window_mode,
+	is_gamepad_active = android_is_gamepad_active,
+	get_gamepad_axis = android_get_gamepad_axis,
+	set_gamepad_vibration = android_set_gamepad_vibration,
+	set_internal_state = android_set_internal_state,
 }
 
 Android_App :: android.App
