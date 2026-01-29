@@ -1,4 +1,4 @@
-#+build linux
+#+build linux, !linux:android
 #+private file
 #+vet explicit-allocators
 

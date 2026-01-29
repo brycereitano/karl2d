@@ -296,14 +296,7 @@ gl_draw :: proc(
 	}
 	
 	gl.BindBuffer(gl.ARRAY_BUFFER, s.vertex_buffer_gpu)
-	vb_data := gl.MapBuffer(gl.ARRAY_BUFFER, gl.WRITE_ONLY)
-	{
-		gpu_map := slice.from_ptr((^u8)(vb_data), VERTEX_BUFFER_MAX)
-		copy(
-			gpu_map,
-			vertex_buffer,
-		)
-	}
+	gl.BufferData(gl.ARRAY_BUFFER, len(vertex_buffer)*size_of(u8), raw_data(vertex_buffer), gl.STREAM_DRAW)
 
 	if len(bound_textures) == len(gl_shd.texture_bindings) {
 		for t, t_idx in bound_textures {
@@ -882,12 +875,18 @@ gl_destroy_shader :: proc(h: Shader_Handle) {
 }
 
 gl_default_shader_vertex_source :: proc() -> []byte {
-	vertex_source := #load("default_shaders/default_shader_gl_vertex.glsl")
-	return vertex_source
+	when ODIN_PLATFORM_SUBTARGET == .Android {
+		return #load("default_shaders/default_shader_webgl_vertex.glsl")
+	} else {
+		return #load("default_shaders/default_shader_gl_vertex.glsl")
+	}
 }
 
 gl_default_shader_fragment_source :: proc() -> []byte {
-	fragment_source := #load("default_shaders/default_shader_gl_fragment.glsl")
-	return fragment_source
+	when ODIN_PLATFORM_SUBTARGET == .Android {
+		return #load("default_shaders/default_shader_webgl_fragment.glsl")
+	} else {
+		return #load("default_shaders/default_shader_gl_fragment.glsl")
+	}
 }
 

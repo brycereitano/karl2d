@@ -1,47 +1,50 @@
-// Glues together OpenGL with an X11 window. This is done by making a glX context and using it to
-// SwapBuffers etc.
-#+build linux, !linux:android
+#+build linux:android
 
 package karl2d
 
-import gl "vendor:OpenGL"
-import "log"
-import "vendor:egl"
-import wl "platform_bindings/linux/wayland"
 import "base:runtime"
+import "log"
+import "platform_bindings/android"
+import gl "vendor:OpenGL"
+import "vendor:egl"
 
-@(private="package")
-make_linux_gl_wayland_glue :: proc(
-	display: ^wl.Display,
-	window: ^wl.EGL_Window,
+@(private = "package")
+make_android_gl_glue :: proc(
+	window: rawptr,
 	allocator: runtime.Allocator,
-	loc := #caller_location
+	loc := #caller_location,
 ) -> Window_Render_Glue {
-	state := new(Linux_GL_Wayland_Glue_State, allocator, loc)
-	state.display = display
-	state.window = window
+	state := new(Android_GL_Wayland_Glue_State, allocator, loc)
 	state.allocator = allocator
+	state.window = window
 	return {
-		state = (^Window_Render_Glue_State)(state),
+		state            = (^Window_Render_Glue_State)(state),
 
 		// these casts just make the proc take a Windows_GL_Glue_State instead of a Window_Render_Glue_State
-		make_context = cast(proc(state: ^Window_Render_Glue_State) -> bool)(linux_gl_wayland_glue_make_context),
-		present = cast(proc(state: ^Window_Render_Glue_State))(linux_gl_wayland_glue_present),
-		destroy = cast(proc(state: ^Window_Render_Glue_State))(linux_gl_wayland_glue_destroy),
-		viewport_resized = cast(proc(state: ^Window_Render_Glue_State))(linux_gl_wayland_glue_viewport_resized),
+		make_context     = cast(proc(
+			state: ^Window_Render_Glue_State,
+		) -> bool)(android_gl_wayland_glue_make_context),
+		present          = cast(proc(
+			state: ^Window_Render_Glue_State,
+		))(android_gl_wayland_glue_present),
+		destroy          = cast(proc(
+			state: ^Window_Render_Glue_State,
+		))(android_gl_wayland_glue_destroy),
+		viewport_resized = cast(proc(
+			state: ^Window_Render_Glue_State,
+		))(android_gl_wayland_glue_viewport_resized),
 	}
 }
 
-Linux_GL_Wayland_Glue_State :: struct {
-	display: ^wl.Display,
-	window: ^wl.EGL_Window,
+Android_GL_Wayland_Glue_State :: struct {
+	window:      rawptr,
 	egl_context: egl.Context,
 	egl_display: egl.Display,
 	egl_surface: egl.Surface,
-	allocator: runtime.Allocator,
+	allocator:   runtime.Allocator,
 }
 
-linux_gl_wayland_glue_make_context :: proc(s: ^Linux_GL_Wayland_Glue_State) -> bool {
+android_gl_wayland_glue_make_context :: proc(s: ^Android_GL_Wayland_Glue_State) -> bool {
 	// Get a valid EGL configuration based on some attribute guidelines
 	// Create a context based on a "chosen" configuration
 	EGL_CONTEXT_FLAGS_KHR :: 0x30FC
@@ -50,23 +53,32 @@ linux_gl_wayland_glue_make_context :: proc(s: ^Linux_GL_Wayland_Glue_State) -> b
 	major, minor, n: i32
 	egl_config: egl.Config
 	config_attribs: []i32 = {
-		egl.SURFACE_TYPE, egl.WINDOW_BIT,
-		egl.RED_SIZE, 8,
-		egl.GREEN_SIZE, 8,
-		egl.BLUE_SIZE, 8,
-		egl.ALPHA_SIZE, 0, // Disable surface alpha for now
-		egl.DEPTH_SIZE, 24, // Request 24-bit depth buffer
-		egl.RENDERABLE_TYPE, egl.OPENGL_BIT,
+		egl.SURFACE_TYPE,
+		egl.WINDOW_BIT,
+		egl.RED_SIZE,
+		8,
+		egl.GREEN_SIZE,
+		8,
+		egl.BLUE_SIZE,
+		8,
+		egl.ALPHA_SIZE,
+		0, // Disable surface alpha for now
+		egl.DEPTH_SIZE,
+		24, // Request 24-bit depth buffer
+		egl.RENDERABLE_TYPE,
+		egl.OPENGL_ES3_BIT,
 		egl.NONE,
 	}
 	context_flags_bitfield: i32 = EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR
 
 	context_attribs: []i32 = {
-		egl.CONTEXT_CLIENT_VERSION, 3,
-		EGL_CONTEXT_FLAGS_KHR, context_flags_bitfield,
+		egl.CONTEXT_CLIENT_VERSION,
+		3,
+		EGL_CONTEXT_FLAGS_KHR,
+		context_flags_bitfield,
 		egl.NONE,
 	}
-	s.egl_display = egl.GetDisplay(egl.NativeDisplayType(s.display))
+	s.egl_display = egl.GetDisplay(egl.DEFAULT_DISPLAY)
 	if s.egl_display == egl.NO_DISPLAY {
 		log.error("Failed to create EGL display")
 		return false
@@ -75,6 +87,7 @@ linux_gl_wayland_glue_make_context :: proc(s: ^Linux_GL_Wayland_Glue_State) -> b
 		log.error("Can't initialize egl display")
 		return false
 	}
+
 	if !egl.ChooseConfig(s.egl_display, raw_data(config_attribs), &egl_config, 1, &n) {
 		log.error("Failed to find/choose EGL config")
 		return false
@@ -117,15 +130,15 @@ linux_gl_wayland_glue_make_context :: proc(s: ^Linux_GL_Wayland_Glue_State) -> b
 	return false
 }
 
-linux_gl_wayland_glue_present :: proc(s: ^Linux_GL_Wayland_Glue_State) {
+android_gl_wayland_glue_present :: proc(s: ^Android_GL_Wayland_Glue_State) {
 	egl.SwapBuffers(s.egl_display, s.egl_surface)
 }
 
-linux_gl_wayland_glue_destroy :: proc(s: ^Linux_GL_Wayland_Glue_State) {
+android_gl_wayland_glue_destroy :: proc(s: ^Android_GL_Wayland_Glue_State) {
 	egl.DestroyContext(s.egl_display, s.egl_context)
 	a := s.allocator
 	free(s, a)
 }
 
-linux_gl_wayland_glue_viewport_resized :: proc(s: ^Linux_GL_Wayland_Glue_State) {
+android_gl_wayland_glue_viewport_resized :: proc(s: ^Android_GL_Wayland_Glue_State) {
 }

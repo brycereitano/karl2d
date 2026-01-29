@@ -59,6 +59,8 @@ init :: proc(
 		s.platform = PLATFORM_WINDOWS
 	} else when ODIN_OS == .JS {
 		s.platform = PLATFORM_WEB
+	} else when ODIN_PLATFORM_SUBTARGET == .Android {
+		s.platform = PLATFORM_ANDROID
 	} else when ODIN_OS == .Linux {
 		s.platform = PLATFORM_LINUX
 	} else when ODIN_OS == .Darwin {

@@ -1,4 +1,4 @@
-#+build linux
+#+build linux, !linux:android
 package karl2d
 
 @(private="package")
