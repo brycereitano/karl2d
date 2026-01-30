@@ -57,12 +57,16 @@ android_init :: proc(
 		case .INIT_WINDOW:
 			if a.window != nil {
 				s.window = a.window
-				log.infof("Window initialized: %", s.window)
 				s.window_render_glue = make_android_gl_glue(s.window, s.allocator)
 			}
 		case .TERM_WINDOW:
 			s.window = nil
-			log.info("Window terminated")
+			append(&s.events, Event_Close_Window_Requested{})
+		case .WINDOW_RESIZED:
+			append(&s.events, Event_Screen_Resize{
+				width = int(android.get_width(s.window)),
+				height = int(android.get_height(s.window)),
+			})
 		case .GAINED_FOCUS:
 			s.suspended = false
 		case .LOST_FOCUS:
@@ -70,28 +74,114 @@ android_init :: proc(
 		}
 	}
 
-
 	s.android_app.on_input_event = proc "c" (a: ^android.App, event: ^android.Input_Event) -> i32 {
 		context = s.ctx
 
 		#partial switch android.input_event_get_type(event) {
+		case .Key:
+			source := android.input_event_get_source(event)
+			if (source & .Gamepad > .Unknown || source & .Joystick > .Unknown) {
+				// Handle multiple?
+				s.gamepads[0].active = true
+
+				keycode := android.key_event_get_key_code(event)
+
+				button := translate_android_button(keycode)
+				if button == .None {
+					#partial switch keycode {
+					case .Power, .Volume_Up, .Volume_Down: // Bubble up to OS
+					return 0;
+					case:
+					return 1;
+					}
+				}
+
+				action := android.motion_event_get_action(event) & .Mask
+				processed := 0
+				#partial switch (action) {
+				case .Down:
+					append(&s.events, Event_Gamepad_Button_Went_Down{
+						gamepad = 0,
+						button = button,
+					})
+					processed = 1
+				case .Up:
+					append(&s.events, Event_Gamepad_Button_Went_Up{
+						gamepad = 0,
+						button = button,
+					})
+					processed = 1
+				}
+				return 0
+			}
 		case .Motion:
 			#partial switch android.input_event_get_source(event) {
+			case .Joystick, .Gamepad:
+				action := android.motion_event_get_action(event) & .Mask
+				for i in 0 ..< android.motion_event_get_pointer_count(event) {
+					s.gamepads[i].active = true
+					s.gamepads[i].axes[.Left_Stick_X].value = android.motion_event_get_axis_value(event, .X, i)
+					s.gamepads[i].axes[.Left_Stick_Y].value = android.motion_event_get_axis_value(event, .Y, i)
+					s.gamepads[i].axes[.Right_Stick_X].value = android.motion_event_get_axis_value(event, .Z, i)
+					s.gamepads[i].axes[.Right_Stick_Y].value = android.motion_event_get_axis_value(event, .R_Z, i)
+
+					// Trigger axises don't work on PS4 controllers
+					s.gamepads[i].axes[.Left_Trigger].value = android.motion_event_get_axis_value(event, .Brake, i)*2 - 1;
+					s.gamepads[i].axes[.Right_Trigger].value = android.motion_event_get_axis_value(event, .Gas, i)*2 - 1;
+
+					// dpad is an axis on android
+					x := android.motion_event_get_axis_value(event, .Hat_X, i)
+					if s.gamepads[i].previous_dpad_horizontal != 0 && s.gamepads[i].previous_dpad_horizontal != x {
+						append(&s.events, Event_Gamepad_Button_Went_Up {
+							gamepad = int(i),
+							button = s.gamepads[i].previous_dpad_horizontal == -1 ? .Left_Face_Left : .Left_Face_Right,
+						})
+					} else if x != 0 {
+						append(&s.events, Event_Gamepad_Button_Went_Down {
+							gamepad = int(i),
+							button = x == -1 ? .Left_Face_Left : .Left_Face_Right,
+						})
+					}
+					s.gamepads[i].previous_dpad_horizontal = x
+
+					y := android.motion_event_get_axis_value(event, .Hat_Y, i)
+					if s.gamepads[i].previous_dpad_vertical != 0 && s.gamepads[i].previous_dpad_vertical != y {
+						append(&s.events, Event_Gamepad_Button_Went_Up {
+							gamepad = int(i),
+							button = s.gamepads[i].previous_dpad_vertical == -1 ? .Left_Face_Up : .Left_Face_Down,
+						})
+					} else if y != 0 {
+						append(&s.events, Event_Gamepad_Button_Went_Down {
+							gamepad = int(i),
+							button = y == -1 ? .Left_Face_Up : .Left_Face_Down,
+						})
+					}
+					s.gamepads[i].previous_dpad_vertical = y
+				}
+				return 1
 			case .Touchscreen:
 				action := android.motion_event_get_action(event) & .Mask
 				processed := i32(0)
 				for i in 0 ..< android.motion_event_get_pointer_count(event) {
 					//id := android.motion_event_get_pointer_id(event, i)
+					// TODO: Process rest of touches
 					x, y := android.motion_event_get_x(event, i), android.motion_event_get_y(event, i)
 					#partial switch (action) {
 					case .Down:
-						log.debugf("touch %d down (%0.1f, %0.1f)", i, x, y)
+						if i == 0 {
+							append(&s.events, Event_Mouse_Button_Went_Down{button = .Left})
+							append(&s.events, Event_Mouse_Move { position = { x, y } })
+						}
 						processed = 1
 					case .Up:
-						log.debugf("touch %d up (%0.1f, %0.1f)", i, x, y)
+						if i == 0 {
+							append(&s.events, Event_Mouse_Button_Went_Up{button = .Left})
+						}
 						processed = 1
 					case .Move:
-						log.debugf("touch %d move (%0.1f, %0.1f)", i, x, y)
+						if i == 0 {
+							append(&s.events, Event_Mouse_Move { position = { x, y } })
+						}
 						processed = 1
 					}
 				}
@@ -114,8 +204,8 @@ android_init :: proc(
 
 android_shutdown :: proc() {
 	// TODO
-	// s.window.shutdown()
 	a := s.allocator
+	delete(s.events)
 	free(s.window_state, a)
 }
 
@@ -131,10 +221,6 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 	app := s.android_app
 
 	for {
-		if s.exiting {
-			break
-		}
-
 		timeout: i32 = -1 if s.suspended else 0
 		ident := android.looper_poll_once(timeout, nil, &android_events, auto_cast &source)
 		if ident < 0 {
@@ -158,12 +244,25 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 	append(events, ..s.events[:])
 	runtime.clear(&s.events)
 }
+
 android_is_gamepad_active :: proc(gamepad: int) -> bool {
-	return false
+	if gamepad < 0 || gamepad > len(s.gamepads) - 1 || gamepad > MAX_GAMEPADS {
+		return false
+	}
+
+	return s.gamepads[gamepad].active
 }
 
 android_get_gamepad_axis :: proc(gamepad: Gamepad_Index, axis: Gamepad_Axis) -> f32 {
-	return 0
+	if axis < min(Gamepad_Axis) || axis > max(Gamepad_Axis) {
+		return 0
+	}
+
+	if gamepad < 0 || gamepad >= MAX_GAMEPADS {
+		return 0
+	}
+
+	return s.gamepads[gamepad].axes[axis].value
 }
 android_set_gamepad_vibration :: proc(gamepad: Gamepad_Index, left: f32, right: f32) {
 	return
@@ -209,8 +308,9 @@ Android_State :: struct {
 	allocator:          runtime.Allocator,
 	android_app:        ^Android_App,
 	events:             [dynamic]Event,
-	exiting:            bool,
 	suspended:          bool,
+
+	gamepads: [MAX_GAMEPADS]Android_Gamepad,
 }
 
 @(private = "package")
@@ -234,4 +334,38 @@ Android_Window_Interface :: struct {
 	get_window_scale:       proc() -> f32,
 	set_window_mode:        proc(window_mode: Window_Mode),
 	set_internal_state:     proc(state: rawptr),
+}
+
+Android_Gamepad :: struct {
+	active: bool,
+	axes: [Gamepad_Axis]Android_Gamepad_Axis_Info,
+
+	previous_dpad_horizontal: f32,
+	previous_dpad_vertical: f32,
+}
+
+Android_Gamepad_Axis_Info :: struct {
+	value: f32,
+}
+
+translate_android_button :: proc(b: android.Keycode) -> Gamepad_Button {
+	#partial switch b {
+	case .Button_A: return .Right_Face_Down;
+	case .Button_B: return .Right_Face_Right;
+	case .Button_X: return .Right_Face_Left;
+	case .Button_Y: return .Right_Face_Up;
+
+	case .Button_L1: return .Left_Shoulder;
+	case .Button_L2: return .Left_Trigger;
+	case .Button_R1: return .Right_Shoulder;
+	case .Button_R2: return .Right_Trigger;
+
+	case .Button_Select: return .Middle_Face_Left;
+	case .Button_Mode: return .Middle_Face_Middle;
+	case .Button_Start: return .Middle_Face_Right;
+	case .Button_Thumb_Left: return .Left_Stick_Press;
+	case .Button_Thumb_Right: return .Right_Stick_Press;
+	case:
+	return .None
+	}
 }

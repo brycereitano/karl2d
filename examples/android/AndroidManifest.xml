@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="se.zylinski.androidexample" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="31" />
+
+    <application
+        android:label="Karl2D Example"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:hasCode="false"
+        >
+
+        <activity
+            android:name="android.app.NativeActivity"
+            android:label="Karl2D Example"
+            android:configChanges="orientation|keyboardHidden"
+            android:exported="true"
+            >
+
+            <meta-data android:name="android.app.lib_name" android:value="main" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

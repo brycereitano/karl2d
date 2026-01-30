@@ -4,7 +4,6 @@ package karl2d
 
 import "base:runtime"
 import "log"
-import "platform_bindings/android"
 import gl "vendor:OpenGL"
 import "vendor:egl"
 

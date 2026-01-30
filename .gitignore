@@ -13,6 +13,7 @@ examples/raylib_ports/*/build
 examples/raylib_ports/*/bin
 examples/scraps/*/build
 examples/scraps/*/bin
+examples/android/*/build
 karl2d.doc.compare.odin
 .nvim.lua
 .github/copilot-instructions.md
