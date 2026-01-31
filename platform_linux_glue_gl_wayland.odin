@@ -1,6 +1,6 @@
 // Glues together OpenGL with an X11 window. This is done by making a glX context and using it to
 // SwapBuffers etc.
-#+build linux, !linux:android
+#+build linux
 
 package karl2d
 
