@@ -45,7 +45,8 @@ step :: proc() -> bool {
 		return false
 	}
 
-	if k2.key_went_down(.Space) {
+	
+	if k2.mouse_button_went_up(.Left) {
 		k2.play_sound(wav)
 	}
 

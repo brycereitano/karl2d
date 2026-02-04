@@ -8,6 +8,9 @@ when ODIN_OS == .Windows {
 } else when ODIN_OS == .JS {
 	DEFAULT_AUDIO_BACKEND_NAME :: "web_audio"
 	AVAILABLE_AUDIO_BACKENDS :: "web_audio, nil"
+} else when ODIN_PLATFORM_SUBTARGET == .Android {
+	DEFAULT_AUDIO_BACKEND_NAME :: "aaudio"
+	AVAILABLE_AUDIO_BACKENDS :: "aaudio, nil"
 } else {
 	DEFAULT_AUDIO_BACKEND_NAME :: "nil"
 	AVAILABLE_AUDIO_BACKENDS :: "nil"
@@ -23,6 +26,8 @@ when AUDIO_BACKEND_NAME == "waveout" {
 	AUDIO_BACKEND :: AUDIO_BACKEND_WAVEOUT
 } else when AUDIO_BACKEND_NAME == "web_audio" {
 	AUDIO_BACKEND :: AUDIO_BACKEND_WEB_AUDIO
+} else when AUDIO_BACKEND_NAME == "aaudio" {
+	AUDIO_BACKEND :: AUDIO_BACKEND_AAUDIO
 } else when AUDIO_BACKEND_NAME == "nil" {
 	AUDIO_BACKEND :: AUDIO_BACKEND_NIL
 } else {

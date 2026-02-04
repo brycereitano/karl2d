@@ -5,6 +5,8 @@ package karl2d_android_entry
 import ex "../.."
 import "base:runtime"
 import "core:log"
+// TODO: fix
+import "../../../../platform_bindings/android"
 
 
 // rawptr here is android.App from the bindings, but avoiding the import.

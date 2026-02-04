@@ -99,6 +99,7 @@ main :: proc() {
 		"build",
 		build_android_dir,
 		fmt.tprintf("-out:%v", object_out_path),
+		"-debug",
 		"-target:linux_arm64",
 		"-subtarget:android",
 		"-build-mode:object",
