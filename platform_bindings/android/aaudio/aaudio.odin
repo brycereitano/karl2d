@@ -28,9 +28,11 @@ foreign aaudio_lib {
 	stream_builder_delete :: proc(builder: ^StreamBuilder) ---
 
 	@(link_name = "AAudioStream_write")
-	stream_write :: proc(stream: ^Stream, buffer: []u32, frames: c.int32_t, timeout_nanoseconds: c.int64_t) -> c.int32_t ---
+	stream_write :: proc(stream: ^Stream, buffer: rawptr, frames: c.int32_t, timeout_nanoseconds: c.int64_t) -> c.int32_t ---
 	@(link_name = "AAudioStream_requestStart")
 	stream_request_start :: proc(stream: ^Stream) -> c.int32_t ---
+	@(link_name = "AAudioStream_waitForStateChange")
+	stream_wait_for_state_change :: proc(stream: ^Stream, from: Stream_State, next: ^Stream_State, timeout_nanoseconds: c.int64_t) -> c.int32_t ---
 	@(link_name = "AAudioStream_getFramesWritten")
 	stream_get_frames_written :: proc(stream: ^Stream) -> c.int64_t ---
 	@(link_name = "AAudioStream_getBufferSizeInFrames")
@@ -41,6 +43,8 @@ foreign aaudio_lib {
 	stream_get_frames_per_burst :: proc(stream: ^Stream) -> c.int32_t ---
 	@(link_name = "AAudioStream_getSamplesPerFrame")
 	stream_get_samples_per_frame :: proc(stream: ^Stream) -> c.int32_t ---
+	@(link_name = "AAudioStream_getTimestamp")
+	stream_get_timestamp :: proc(stream: ^Stream, clock_id: Clock_ID, frame_position: ^c.int64_t, time_nanoseconds: ^c.int64_t) -> c.int32_t ---
 	@(link_name = "AAudioStream_getXRunCount")
 	stream_get_x_run_count :: proc(stream: ^Stream) -> c.int32_t ---
 	@(link_name = "AAudioStream_setBufferSizeInFrames")
@@ -49,7 +53,7 @@ foreign aaudio_lib {
 	stream_close :: proc(stream: ^Stream) ---
 }
 
-DataCallback :: proc(stream: Stream, user_data: rawptr, audio_data: rawptr, num_frames: c.int) -> Callback_Result
+DataCallback :: proc(stream: ^Stream, user_data: rawptr, audio_data: rawptr, num_frames: c.int) -> Callback_Result
 Stream :: struct{}
 StreamBuilder :: struct{}
 
@@ -63,7 +67,29 @@ Callback_Result :: enum c.int {
 }
 Format :: enum c.int {
 	Invalid = -1,
-	Unspecified = 0,
+	Unspecified,
 	PCM_I16 = 1,
 	PCM_Float = 2
+}
+
+Clock_ID :: enum c.int {
+	Monotonic = 1,
+	Boot_Time = 7,
+}
+
+Stream_State :: enum c.int {
+	Uninitialized = 0,
+	Unknown,
+	Open,
+	Starting,
+	Started,
+	Pausing,
+	Paused,
+	Flushing,
+	Flushed,
+	Stopping,
+	Stopped,
+	Closing,
+	Closed,
+	Disconnected,
 }
