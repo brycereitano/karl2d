@@ -22,6 +22,8 @@ foreign aaudio_lib {
 	stream_builder_set_format :: proc(builder: ^StreamBuilder, format: Format) ---
 	@(link_name = "AAudioStreamBuilder_setBufferCapacityInFrames")
 	stream_builder_set_buffer_capacity_in_frames :: proc(builder: ^StreamBuilder, frames: c.int) ---
+	@(link_name = "AAudioStreamBuilder_setPerformanceMode")
+	stream_builder_set_performance_mode :: proc(builder: ^StreamBuilder, mode: Performance_Mode) ---
 	@(link_name = "AAudioStreamBuilder_openStream")
 	stream_builder_open_stream :: proc(builder: ^StreamBuilder, stream: ^^Stream) -> c.int32_t ---
 	@(link_name = "AAudioStreamBuilder_delete")
@@ -43,6 +45,12 @@ foreign aaudio_lib {
 	stream_get_frames_per_burst :: proc(stream: ^Stream) -> c.int32_t ---
 	@(link_name = "AAudioStream_getSamplesPerFrame")
 	stream_get_samples_per_frame :: proc(stream: ^Stream) -> c.int32_t ---
+	@(link_name = "AAudioStream_getSampleRate")
+	stream_get_sample_rate :: proc(stream: ^Stream) -> c.int32_t ---
+	@(link_name = "AAudioStream_getChannelCount")
+	stream_get_channel_count :: proc(stream: ^Stream) -> c.int32_t ---
+	@(link_name = "AAudioStream_getFormat")
+	stream_get_format :: proc(stream: ^Stream) -> Format ---
 	@(link_name = "AAudioStream_getTimestamp")
 	stream_get_timestamp :: proc(stream: ^Stream, clock_id: Clock_ID, frame_position: ^c.int64_t, time_nanoseconds: ^c.int64_t) -> c.int32_t ---
 	@(link_name = "AAudioStream_getXRunCount")
@@ -92,4 +100,10 @@ Stream_State :: enum c.int {
 	Closing,
 	Closed,
 	Disconnected,
+}
+
+Performance_Mode :: enum c.int {
+    None = 10,
+    Power_Saving = 11,
+    Low_Latency = 12,
 }

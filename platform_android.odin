@@ -68,8 +68,10 @@ android_init :: proc(
 				height = int(android.get_height(s.window)),
 			})
 		case .GAINED_FOCUS:
+			append(&s.events, Event_Window_Focused{})
 			s.suspended = false
 		case .LOST_FOCUS:
+			append(&s.events, Event_Window_Unfocused{})
 			s.suspended = true
 		}
 	}
@@ -199,14 +201,13 @@ android_init :: proc(
 	for android_get_width() == 0 {
 		android_get_events(&events)
 	}
-	runtime.delete(events)
+	delete(events)
 }
 
 android_shutdown :: proc() {
 	// TODO
-	a := s.allocator
 	delete(s.events)
-	free(s.window_state, a)
+	free(s.window_state, s.allocator)
 }
 
 android_get_window_render_glue :: proc() -> Window_Render_Glue {
@@ -221,7 +222,7 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 	app := s.android_app
 
 	for {
-		timeout: i32 = -1 if s.suspended else 0
+		timeout: i32 = -1 if s.previous_suspended && s.suspended else 0
 		ident := android.looper_poll_once(timeout, nil, &android_events, auto_cast &source)
 		if ident < 0 {
 			break
@@ -235,11 +236,13 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 		// @TODO: Add sensor events. See:
 		// https://github.com/android/ndk-samples/blob/master/native-activity/app/src/main/cpp/main.cpp
 
+
 		if app.destroy_requested != 0 {
 			append(&s.events, Event_Close_Window_Requested{})
 			return
 		}
 	}
+	s.previous_suspended = s.suspended // Process events one more time
 
 	append(events, ..s.events[:])
 	runtime.clear(&s.events)
@@ -308,6 +311,7 @@ Android_State :: struct {
 	allocator:          runtime.Allocator,
 	android_app:        ^Android_App,
 	events:             [dynamic]Event,
+	previous_suspended: bool,
 	suspended:          bool,
 
 	gamepads: [MAX_GAMEPADS]Android_Gamepad,

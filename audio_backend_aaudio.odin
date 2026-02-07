@@ -15,15 +15,26 @@ AUDIO_BACKEND_AAUDIO :: Audio_Backend_Interface {
 }
 
 import "base:runtime"
+import "core:time"
+import "core:sync"
 import "log"
 import "platform_bindings/android/aaudio"
-import "core:time"
 
 AAudio_State :: struct {
 	stream: ^aaudio.Stream,
 	allocator: runtime.Allocator,
-	previous_under_run_count: i32,
-	submitted_samples: i64,
+	previous_under_run_count: int,
+	submitted_samples: int,
+
+	buffer: []Audio_Sample,
+	head: int,
+	tail: int,
+}
+
+aaudio_buffer_mask :: proc() -> int { return len(s.buffer) - 1 }
+aaudio_buffer_space :: proc() -> int { return aaudio_buffer_mask() - aaudio_buffer_length() }
+aaudio_buffer_length :: proc() -> int {
+	return int(sync.atomic_load(&s.tail) - sync.atomic_load(&s.head)) & aaudio_buffer_mask()
 }
 
 aaudio_state_size :: proc() -> int {
@@ -43,13 +54,37 @@ aaudio_init :: proc(state: rawptr, allocator: runtime.Allocator) {
 	aaudio.stream_builder_set_sample_rate(builder, 44100)
 	aaudio.stream_builder_set_channel_count(builder, 2)
 	aaudio.stream_builder_set_format(builder, .PCM_I16)
+	aaudio.stream_builder_set_performance_mode(builder, .Low_Latency)
+	aaudio.stream_builder_set_data_callback(builder, aaudio_data_callback, nil)
 
 	ch(aaudio.stream_builder_open_stream(builder, &s.stream))
 	aaudio.stream_builder_delete(builder)
 
 	ch(aaudio.stream_request_start(s.stream))
 	next_state: aaudio.Stream_State
-	ch(aaudio.stream_wait_for_state_change(s.stream, .Starting, &next_state, i64(100 * time.Millisecond)))
+	ch(aaudio.stream_wait_for_state_change(s.stream, .Starting, &next_state, i64(1000 * time.Millisecond)))
+
+	log.debugf("Sample rate: %d", aaudio.stream_get_sample_rate(s.stream))
+	log.debugf("Channel count: %d", aaudio.stream_get_channel_count(s.stream))
+	log.debugf("Format: %v", aaudio.stream_get_format(s.stream))
+	capacity := next_power_of_two(uint(aaudio.stream_get_buffer_capacity_in_frames(s.stream))*2)
+	s.buffer = make([]Audio_Sample, capacity, allocator)
+}
+
+aaudio_data_callback :: proc(stream: ^aaudio.Stream, user_data: rawptr, audio_data: rawptr, num_frames: i32) -> aaudio.Callback_Result {
+	audio_slice := ([^]Audio_Sample)(audio_data)[:num_frames]
+	length := min(aaudio_buffer_length(), int(num_frames))
+	i := sync.atomic_load(&s.head)
+	if i + length > len(s.buffer) {
+		written := copy(audio_slice[:len(s.buffer)-i], s.buffer[i:])
+		audio_slice = audio_slice[written:]
+		length -= written
+		i = 0
+	}
+	copy(audio_slice, s.buffer[i:i+length])
+	sync.atomic_store(&s.head, i + length)
+
+	return .Continue
 }
 
 
@@ -62,6 +97,7 @@ ch :: proc(result: i32, loc := #caller_location) {
 aaudio_shutdown :: proc() {
 	log.debug("Shutdown audio backend aaudio")
 	aaudio.stream_close(s.stream)
+	delete(s.buffer, s.allocator)
 }
 
 aaudio_set_internal_state :: proc(state: rawptr) {
@@ -70,29 +106,25 @@ aaudio_set_internal_state :: proc(state: rawptr) {
 }
 
 aaudio_feed :: proc(samples: []Audio_Sample) {
-	frames_per_burst := aaudio.stream_get_frames_per_burst(s.stream)
-	buffer_size := aaudio.stream_get_buffer_size_in_frames(s.stream)
-	buffer_capacity := aaudio.stream_get_buffer_capacity_in_frames(s.stream)
-
-
-	submitted := aaudio.stream_write(s.stream, raw_data(samples), i32(len(samples)), i64(time.Millisecond))
-	s.submitted_samples += i64(submitted/2) // Partial frame count, 2 samples per frame
-
-	if buffer_size < buffer_capacity {
-		underrun_count := aaudio.stream_get_x_run_count(s.stream)
-
-		// Getting an underrun, increase buffer size
-		if underrun_count > s.previous_under_run_count {
-			s.previous_under_run_count = underrun_count
-			buffer_size += frames_per_burst
-			log.debugf("resizing buffer %d", buffer_size)
-			aaudio.stream_set_buffer_size_in_frames(s.stream, buffer_size)
-		}
+	length := min(aaudio_buffer_space(), len(samples))
+	i := sync.atomic_load(&s.tail)
+	consumed := 0
+	if i + length > len(s.buffer) {
+		consumed = copy(s.buffer[i:], samples[:len(s.buffer)-i])
+		length -= consumed
+		i = 0
 	}
+	copy(s.buffer[i:], samples[consumed:])
+	sync.atomic_store(&s.tail, i + length)
 }
 
 aaudio_remaining_samples :: proc() -> int {
-	frame_pos, ns: i64
-	ch(aaudio.stream_get_timestamp(s.stream, .Monotonic, &frame_pos, &ns))
-	return int(s.submitted_samples - frame_pos)
+	return aaudio_buffer_length()
 }
+
+next_power_of_two :: proc(x: uint) -> uint {
+	p: uint
+  for p = 1; p < x; p *= 2 {}
+  return p
+}
+
