@@ -264,6 +264,9 @@ calculate_frame_time :: proc() {
 // WebGL note: WebGL does the backbuffer flipping automatically. But you should still call this to
 // make sure that all rendering has been sent off to the GPU (as it calls `draw_current_batch()`).
 present :: proc() {
+	if s.render_backend_suspended {
+		return
+	}
 	draw_current_batch()
 	rb.present()
 }
@@ -335,8 +338,31 @@ process_events :: proc() {
 			s.proj_matrix = make_default_projection(e.width, e.height)
 
 		case Event_Window_Focused:			
+			when ODIN_PLATFORM_SUBTARGET == .Android {
+				log.debug("focused")
+
+				if s.render_backend_suspended {
+					s.render_backend_suspended = false
+				}
+
+				if s.audio_backend_suspended {
+					ab.init(s.audio_backend_state, s.allocator)
+					s.audio_backend_suspended = false
+				}
+			}
 
 		case Event_Window_Unfocused:
+			when ODIN_PLATFORM_SUBTARGET == .Android {
+				log.debug("unfocused")
+				if !s.render_backend_suspended {
+					s.render_backend_suspended = true
+				}
+				if !s.audio_backend_suspended {
+					ab.shutdown()
+					s.audio_backend_suspended = true
+				}
+			}
+
 			for k in Keyboard_Key {
 				if s.key_is_held[k] {
 					s.key_is_held[k] = false
@@ -2377,6 +2403,7 @@ State :: struct {
 	platform_state: rawptr,
 	render_backend: Render_Backend_Interface,
 	render_backend_state: rawptr,
+	render_backend_suspended: bool,
 
 	fs: fs.FontContext,
 	
@@ -2432,6 +2459,7 @@ State :: struct {
 	// Audio
 	audio_backend: Audio_Backend_Interface,
 	audio_backend_state: rawptr,
+	audio_backend_suspended: bool,
 
 	sounds: hm.Handle_Map(Sound_Data, Sound, 1024*10),
 

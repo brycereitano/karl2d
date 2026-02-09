@@ -5,7 +5,8 @@
 package karl2d
 
 import "base:runtime"
-import "log"
+import "vendor:egl"
+import "core:log"
 
 import "platform_bindings/android"
 
@@ -57,22 +58,37 @@ android_init :: proc(
 		case .INIT_WINDOW:
 			if a.window != nil {
 				s.window = a.window
-				s.window_render_glue = make_android_gl_glue(s.window, s.allocator)
+				s.suspended = false
+
+				state := (^Android_GL_Glue_State)(s.window_render_glue.state)
+				if state == nil {
+					s.window_render_glue = make_android_gl_glue(s.window, s.allocator)
+				} else { // recovering from backgrounding of app, rebind surface
+					state.egl_surface = egl.CreateWindowSurface(
+						state.egl_display,
+						state.egl_config,
+						egl.NativeWindowType(s.window),
+						nil
+					);
+					egl.MakeCurrent(state.egl_display, state.egl_surface, state.egl_surface, state.egl_context);
+				}
 			}
+			append(&s.events, Event_Window_Focused{})
 		case .TERM_WINDOW:
 			s.window = nil
-			append(&s.events, Event_Close_Window_Requested{})
+			state := (^Android_GL_Glue_State)(s.window_render_glue.state)
+			egl.MakeCurrent(state.egl_display, egl.NO_SURFACE, egl.NO_SURFACE, egl.NO_CONTEXT)
+
+			if state.egl_surface != egl.NO_SURFACE {
+				egl.DestroySurface(state.egl_display, state.egl_surface)
+				state.egl_surface = egl.NO_SURFACE
+			}
+			append(&s.events, Event_Window_Unfocused{})
 		case .WINDOW_RESIZED:
 			append(&s.events, Event_Screen_Resize{
 				width = int(android.get_width(s.window)),
 				height = int(android.get_height(s.window)),
 			})
-		case .GAINED_FOCUS:
-			append(&s.events, Event_Window_Focused{})
-			s.suspended = false
-		case .LOST_FOCUS:
-			append(&s.events, Event_Window_Unfocused{})
-			s.suspended = true
 		}
 	}
 
@@ -200,12 +216,12 @@ android_init :: proc(
 	events := make([dynamic]Event, allocator)
 	for android_get_width() == 0 {
 		android_get_events(&events)
+		s.suspended = false
 	}
 	delete(events)
 }
 
 android_shutdown :: proc() {
-	// TODO
 	delete(s.events)
 	free(s.window_state, s.allocator)
 }
@@ -222,9 +238,9 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 	app := s.android_app
 
 	for {
-		timeout: i32 = -1 if s.previous_suspended && s.suspended else 0
-		ident := android.looper_poll_once(timeout, nil, &android_events, auto_cast &source)
-		if ident < 0 {
+		timeout: i32 = -1 if s.suspended else 0 // Window not attached, wait indefinitely for app to wakeup
+		ident := android.looper_poll_once(timeout, nil, &android_events, (^^rawptr)(&source))
+		if i32(ident) < 0 {
 			break
 		}
 
@@ -233,16 +249,12 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 			source.process(app, source)
 		}
 
-		// @TODO: Add sensor events. See:
-		// https://github.com/android/ndk-samples/blob/master/native-activity/app/src/main/cpp/main.cpp
-
-
 		if app.destroy_requested != 0 {
-			append(&s.events, Event_Close_Window_Requested{})
+			append(events, Event_Close_Window_Requested{})
 			return
 		}
 	}
-	s.previous_suspended = s.suspended // Process events one more time
+	s.suspended = s.window == nil // Suspend if window is detached, this allows the unfocused event to be processed
 
 	append(events, ..s.events[:])
 	runtime.clear(&s.events)
@@ -303,16 +315,16 @@ android_set_window_mode :: proc(window_mode: Window_Mode) {
 	//s.window.set_window_mode(window_mode)
 }
 
+@(private = "package")
 Android_State :: struct {
-	window:             rawptr,
-	window_state:       rawptr,
+	window: rawptr,
+	window_state: rawptr,
 	window_render_glue: Window_Render_Glue,
-	ctx:                runtime.Context,
-	allocator:          runtime.Allocator,
-	android_app:        ^Android_App,
-	events:             [dynamic]Event,
-	previous_suspended: bool,
-	suspended:          bool,
+	ctx: runtime.Context,
+	allocator: runtime.Allocator,
+	android_app: ^Android_App,
+	events: [dynamic]Event,
+	suspended: bool,
 
 	gamepads: [MAX_GAMEPADS]Android_Gamepad,
 }

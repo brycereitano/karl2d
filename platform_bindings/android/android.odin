@@ -12,7 +12,7 @@ foreign android_lib {
 	log_print :: proc(log_level: Log_Priority, tag: cstring, fmt: cstring, #c_vararg args: ..any) ---
 
 	@(link_name = "ALooper_pollOnce")
-	looper_poll_once :: proc(timeoutMillis: i32, outFd: ^c.int, events: ^c.int, outData: ^^rawptr) -> c.int ---
+	looper_poll_once :: proc(timeoutMillis: i32, outFd: ^c.int, events: ^c.int, outData: ^^rawptr) -> Looper_Poll ---
 
 	@(link_name = "ANativeWindow_getWidth")
 	get_width :: proc(_: rawptr) -> c.int ---
@@ -169,6 +169,13 @@ Rect :: struct {
 	top:    i32,
 	right:  i32,
 	bottom: i32,
+}
+
+Looper_Poll :: enum c.int {
+	Wake = -1,
+	Callback = -2,
+	Timeout = -3,
+	Error = -4,
 }
 
 App_Command :: enum c.int {

@@ -13,7 +13,7 @@ make_android_gl_glue :: proc(
 	allocator: runtime.Allocator,
 	loc := #caller_location,
 ) -> Window_Render_Glue {
-	state := new(Android_GL_Wayland_Glue_State, allocator, loc)
+	state := new(Android_GL_Glue_State, allocator, loc)
 	state.allocator = allocator
 	state.window = window
 	return {
@@ -22,35 +22,35 @@ make_android_gl_glue :: proc(
 		// these casts just make the proc take a Windows_GL_Glue_State instead of a Window_Render_Glue_State
 		make_context     = cast(proc(
 			state: ^Window_Render_Glue_State,
-		) -> bool)(android_gl_wayland_glue_make_context),
+		) -> bool)(android_gl_glue_make_context),
 		present          = cast(proc(
 			state: ^Window_Render_Glue_State,
-		))(android_gl_wayland_glue_present),
+		))(android_gl_glue_present),
 		destroy          = cast(proc(
 			state: ^Window_Render_Glue_State,
-		))(android_gl_wayland_glue_destroy),
+		))(android_gl_glue_destroy),
 		viewport_resized = cast(proc(
 			state: ^Window_Render_Glue_State,
-		))(android_gl_wayland_glue_viewport_resized),
+		))(android_gl_glue_viewport_resized),
 	}
 }
 
-Android_GL_Wayland_Glue_State :: struct {
+Android_GL_Glue_State :: struct {
 	window:      rawptr,
+	egl_config: egl.Config,
 	egl_context: egl.Context,
 	egl_display: egl.Display,
 	egl_surface: egl.Surface,
 	allocator:   runtime.Allocator,
 }
 
-android_gl_wayland_glue_make_context :: proc(s: ^Android_GL_Wayland_Glue_State) -> bool {
+android_gl_glue_make_context :: proc(s: ^Android_GL_Glue_State) -> bool {
 	// Get a valid EGL configuration based on some attribute guidelines
 	// Create a context based on a "chosen" configuration
 	EGL_CONTEXT_FLAGS_KHR :: 0x30FC
 	EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR :: 0x00000001
 
 	major, minor, n: i32
-	egl_config: egl.Config
 	config_attribs: []i32 = {
 		egl.SURFACE_TYPE,
 		egl.WINDOW_BIT,
@@ -87,14 +87,14 @@ android_gl_wayland_glue_make_context :: proc(s: ^Android_GL_Wayland_Glue_State) 
 		return false
 	}
 
-	if !egl.ChooseConfig(s.egl_display, raw_data(config_attribs), &egl_config, 1, &n) {
+	if !egl.ChooseConfig(s.egl_display, raw_data(config_attribs), &s.egl_config, 1, &n) {
 		log.error("Failed to find/choose EGL config")
 		return false
 	}
 
 	s.egl_surface = egl.CreateWindowSurface(
 		s.egl_display,
-		egl_config,
+		s.egl_config,
 		egl.NativeWindowType(s.window),
 		nil,
 	)
@@ -108,7 +108,7 @@ android_gl_wayland_glue_make_context :: proc(s: ^Android_GL_Wayland_Glue_State) 
 
 	s.egl_context = egl.CreateContext(
 		s.egl_display,
-		egl_config,
+		s.egl_config,
 		egl.NO_CONTEXT,
 		raw_data(context_attribs),
 	)
@@ -129,15 +129,24 @@ android_gl_wayland_glue_make_context :: proc(s: ^Android_GL_Wayland_Glue_State) 
 	return false
 }
 
-android_gl_wayland_glue_present :: proc(s: ^Android_GL_Wayland_Glue_State) {
+android_gl_glue_present :: proc(s: ^Android_GL_Glue_State) {
 	egl.SwapBuffers(s.egl_display, s.egl_surface)
 }
 
-android_gl_wayland_glue_destroy :: proc(s: ^Android_GL_Wayland_Glue_State) {
-	egl.DestroyContext(s.egl_display, s.egl_context)
+android_gl_glue_destroy :: proc(s: ^Android_GL_Glue_State) {
+	egl.MakeCurrent(s.egl_display, egl.NO_SURFACE, egl.NO_SURFACE, egl.NO_CONTEXT);
+
+	// Could have been distroyed by backgrounding app.
+	if (s.egl_surface != egl.NO_SURFACE) {
+		egl.DestroySurface(s.egl_display, s.egl_surface);
+	}
+
+	egl.DestroyContext(s.egl_display, s.egl_context);
+	egl.Terminate(s.egl_display);
+
 	a := s.allocator
 	free(s, a)
 }
 
-android_gl_wayland_glue_viewport_resized :: proc(s: ^Android_GL_Wayland_Glue_State) {
+android_gl_glue_viewport_resized :: proc(s: ^Android_GL_Glue_State) {
 }

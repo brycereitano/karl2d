@@ -97,6 +97,7 @@ ch :: proc(result: i32, loc := #caller_location) {
 aaudio_shutdown :: proc() {
 	log.debug("Shutdown audio backend aaudio")
 	aaudio.stream_close(s.stream)
+	s.stream = nil
 	delete(s.buffer, s.allocator)
 }
 
@@ -124,7 +125,7 @@ aaudio_remaining_samples :: proc() -> int {
 
 next_power_of_two :: proc(x: uint) -> uint {
 	p: uint
-  for p = 1; p < x; p *= 2 {}
-  return p
+	for p = 1; p < x; p *= 2 {}
+	return p
 }
 

@@ -11,7 +11,7 @@ import "../../../../platform_bindings/android"
 
 // rawptr here is android.App from the bindings, but avoiding the import.
 @(export)
-android_main :: proc "c" (app: rawptr) -> int {
+android_main :: proc "c" (app: rawptr) {
 	// Make sure we set a context first thing in the main function
 	context = runtime.default_context()
 	when ODIN_DEBUG {
@@ -28,9 +28,11 @@ android_main :: proc "c" (app: rawptr) -> int {
 	// TODO: Find a better way to get data into android build
 	context.user_ptr = app
 
+	log.debug("starting up")
+
 	ex.init()
 	for ex.step() {}
 	ex.shutdown()
-
-	return 0
+	
+	log.debug("fully shutdown")
 }
