@@ -214,9 +214,9 @@ android_init :: proc(
 
 	// How to handle this?
 	events := make([dynamic]Event, allocator)
-	for android_get_width() == 0 {
+	for s.window == nil {
 		android_get_events(&events)
-		s.suspended = false
+		s.suspended = false // unset until the window is populated for the first time
 	}
 	delete(events)
 }
@@ -239,7 +239,7 @@ android_get_events :: proc(events: ^[dynamic]Event) {
 
 	for {
 		timeout: i32 = -1 if s.suspended else 0 // Window not attached, wait indefinitely for app to wakeup
-		ident := android.looper_poll_once(timeout, nil, &android_events, (^^rawptr)(&source))
+		ident := android.looper_poll_once(timeout, nil, &android_events, (^rawptr)(&source))
 		if i32(ident) < 0 {
 			break
 		}

@@ -53,7 +53,7 @@ aaudio_init :: proc(state: rawptr, allocator: runtime.Allocator) {
 	ch(aaudio.create_stream_builder(&builder))
 	aaudio.stream_builder_set_sample_rate(builder, 44100)
 	aaudio.stream_builder_set_channel_count(builder, 2)
-	aaudio.stream_builder_set_format(builder, .PCM_I16)
+	aaudio.stream_builder_set_format(builder, .PCM_Float)
 	aaudio.stream_builder_set_performance_mode(builder, .Low_Latency)
 	aaudio.stream_builder_set_data_callback(builder, aaudio_data_callback, nil)
 
